@@ -22,7 +22,7 @@ test.describe("Header and navigation", () => {
   });
 
   test("has sign-in link when not logged in", async ({ page }) => {
-    const signIn = page.locator("#pxme-login-btn a");
+    const signIn = page.locator("#login-item a");
     await expect(signIn).toBeVisible();
     await expect(signIn).toHaveAttribute("href", "/auth/signin");
     await expect(signIn).toHaveText("Sign In");

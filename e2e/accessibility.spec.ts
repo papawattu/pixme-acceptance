@@ -7,13 +7,21 @@ test.describe("Keyboard accessibility", () => {
 
   test("sign-in link is focusable via Tab", async ({ page }) => {
     let found = false;
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 15; i++) {
       await page.keyboard.press("Tab");
-      const tag = await page.evaluate(() => document.activeElement?.tagName);
-      const text = await page.evaluate(
-        () => document.activeElement?.textContent?.trim(),
-      );
-      if (tag === "A" && text === "Sign In") {
+      // Check both light DOM and shadow DOM active elements
+      const result = await page.evaluate(() => {
+        let el = document.activeElement;
+        // Traverse into shadow roots to find the deepest active element
+        while (el?.shadowRoot?.activeElement) {
+          el = el.shadowRoot.activeElement;
+        }
+        return {
+          tag: el?.tagName,
+          text: el?.textContent?.trim(),
+        };
+      });
+      if (result.tag === "A" && result.text === "Sign In") {
         found = true;
         break;
       }
@@ -24,10 +32,14 @@ test.describe("Keyboard accessibility", () => {
   test("Tab navigates through interactive elements", async ({ page }) => {
     const focusedElements: string[] = [];
 
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 15; i++) {
       await page.keyboard.press("Tab");
       const info = await page.evaluate(() => {
-        const el = document.activeElement;
+        let el = document.activeElement;
+        // Traverse into shadow roots to find the deepest active element
+        while (el?.shadowRoot?.activeElement) {
+          el = el.shadowRoot.activeElement;
+        }
         if (el && el !== document.body) {
           return `${el.tagName}:${el.textContent?.trim().substring(0, 20)}`;
         }

@@ -53,14 +53,18 @@ test.describe("Page load", () => {
       null,
       { timeout: 10_000 },
     );
-    const galleryDefined = await page.evaluate(
-      () => customElements.get("pxme-gallery") !== undefined,
-    );
-    const filterDefined = await page.evaluate(
-      () => customElements.get("pxme-filter") !== undefined,
-    );
-    expect(galleryDefined).toBe(true);
-    expect(filterDefined).toBe(true);
+    const elements = await page.evaluate(() => ({
+      gallery: customElements.get("pxme-gallery") !== undefined,
+      filter: customElements.get("pxme-filter") !== undefined,
+      header: customElements.get("pxme-header") !== undefined,
+      toolbar: customElements.get("pxme-toolbar") !== undefined,
+      footer: customElements.get("pxme-footer") !== undefined,
+    }));
+    expect(elements.gallery).toBe(true);
+    expect(elements.filter).toBe(true);
+    expect(elements.header).toBe(true);
+    expect(elements.toolbar).toBe(true);
+    expect(elements.footer).toBe(true);
   });
 
   test("no console errors on load", async ({ page }) => {

@@ -3,7 +3,7 @@ import { test, expect } from "@playwright/test";
 test.describe("Page load", () => {
   test("has correct title", async ({ page }) => {
     await page.goto("/");
-    await expect(page).toHaveTitle("Pixme UI");
+    await expect(page).toHaveTitle("Pixme");
   });
 
   test("serves a valid HTML page", async ({ page }) => {
@@ -21,29 +21,46 @@ test.describe("Page load", () => {
     );
   });
 
-  test("has meta description", async ({ page }) => {
+  test("has theme-color meta tag", async ({ page }) => {
     await page.goto("/");
-    const desc = page.locator('meta[name="description"]');
-    await expect(desc).toHaveAttribute("content", /Pixme/);
+    const themeColor = page.locator('meta[name="theme-color"]');
+    await expect(themeColor).toHaveAttribute("content", "#ffffff");
   });
 
   test("has favicon", async ({ page }) => {
     await page.goto("/");
     const favicon = page.locator('link[rel="icon"]');
-    await expect(favicon).toHaveAttribute("href", /favicon\.svg/);
+    await expect(favicon).toHaveCount(2); // 32x32 and 16x16
   });
 
-  test("loads the Lit components module", async ({ page }) => {
+  test("has apple-touch-icon", async ({ page }) => {
     await page.goto("/");
-    // The custom elements should be defined after the module loads
-    const headerDefined = await page.evaluate(() =>
-      customElements.get("pixme-header") !== undefined,
+    const icon = page.locator('link[rel="apple-touch-icon"]');
+    await expect(icon).toHaveAttribute("href", /apple-touch-icon/);
+  });
+
+  test("loads CSS stylesheet", async ({ page }) => {
+    await page.goto("/");
+    const stylesheet = page.locator('link[rel="stylesheet"]');
+    await expect(stylesheet).toHaveAttribute("href", /style\.css/);
+  });
+
+  test("registers custom elements", async ({ page }) => {
+    await page.goto("/");
+    // Wait for modules to load
+    await page.waitForFunction(
+      () => customElements.get("pxme-gallery") !== undefined,
+      null,
+      { timeout: 10_000 },
     );
-    const buttonDefined = await page.evaluate(() =>
-      customElements.get("pixme-button") !== undefined,
+    const galleryDefined = await page.evaluate(
+      () => customElements.get("pxme-gallery") !== undefined,
     );
-    expect(headerDefined).toBe(true);
-    expect(buttonDefined).toBe(true);
+    const filterDefined = await page.evaluate(
+      () => customElements.get("pxme-filter") !== undefined,
+    );
+    expect(galleryDefined).toBe(true);
+    expect(filterDefined).toBe(true);
   });
 
   test("no console errors on load", async ({ page }) => {
@@ -54,7 +71,18 @@ test.describe("Page load", () => {
       }
     });
     await page.goto("/");
-    await page.waitForTimeout(1000);
+    // Wait for gallery to start loading images
+    await page.waitForTimeout(2000);
     expect(errors).toEqual([]);
+  });
+
+  test("design tokens are defined", async ({ page }) => {
+    await page.goto("/");
+    const primaryColor = await page.evaluate(() =>
+      getComputedStyle(document.documentElement)
+        .getPropertyValue("--pxme-color-primary")
+        .trim(),
+    );
+    expect(primaryColor).toBeTruthy();
   });
 });

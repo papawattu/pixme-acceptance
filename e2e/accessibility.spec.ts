@@ -5,93 +5,67 @@ test.describe("Keyboard accessibility", () => {
     await page.goto("/");
   });
 
-  test("brand link is focusable via Tab", async ({ page }) => {
-    await page.keyboard.press("Tab");
-    // First focusable element should be the brand link in shadow DOM
-    const focused = await page.evaluate(() => {
-      const header = document.querySelector("pixme-header");
-      return header?.shadowRoot?.activeElement?.className ?? "";
-    });
-    expect(focused).toContain("brand");
+  test("sign-in link is focusable via Tab", async ({ page }) => {
+    let found = false;
+    for (let i = 0; i < 10; i++) {
+      await page.keyboard.press("Tab");
+      const tag = await page.evaluate(() => document.activeElement?.tagName);
+      const text = await page.evaluate(
+        () => document.activeElement?.textContent?.trim(),
+      );
+      if (tag === "A" && text === "Sign In") {
+        found = true;
+        break;
+      }
+    }
+    expect(found).toBe(true);
   });
 
   test("Tab navigates through interactive elements", async ({ page }) => {
-    // Collect the text of focused elements as we tab through
-    const focusedTexts: string[] = [];
+    const focusedElements: string[] = [];
 
-    // Tab through all elements, collecting focused element text
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < 10; i++) {
       await page.keyboard.press("Tab");
-      const text = await page.evaluate(() => {
-        // Check shadow roots first
-        const header = document.querySelector("pixme-header");
-        const shadowActive = header?.shadowRoot?.activeElement;
-        if (shadowActive) {
-          return `header:${shadowActive.textContent?.trim()}`;
-        }
-        // Check active element in document
-        const active = document.activeElement;
-        if (active && active !== document.body) {
-          return active.textContent?.trim() ?? active.tagName;
+      const info = await page.evaluate(() => {
+        const el = document.activeElement;
+        if (el && el !== document.body) {
+          return `${el.tagName}:${el.textContent?.trim().substring(0, 20)}`;
         }
         return "";
       });
-      if (text) focusedTexts.push(text);
+      if (info) focusedElements.push(info);
     }
 
-    // We should be able to tab to the brand link and at least some nav items
-    expect(focusedTexts.length).toBeGreaterThan(0);
+    expect(focusedElements.length).toBeGreaterThan(0);
   });
 
-  test("buttons show focus ring on keyboard focus", async ({ page }) => {
-    // Tab to the first button (past header elements)
-    // Use locator focus to test the focus style directly
-    const button = page
-      .locator('pixme-button[variant="primary"]')
-      .locator("button");
-    await button.focus();
-
-    const outlineStyle = await button.evaluate(
-      (el) => getComputedStyle(el).outlineStyle,
-    );
-    // When :focus-visible applies, outline should be set (solid)
-    // Some browsers may not show focus-visible on programmatic focus,
-    // but the CSS rule should exist
-    expect(outlineStyle).not.toBe("none");
-  });
-});
-
-test.describe("Keyboard accessibility - mobile menu", () => {
-  test.skip(
-    ({ viewport }) => (viewport?.width ?? 1280) > 768,
-    "Mobile menu keyboard tests only apply to narrow viewports",
-  );
-
-  test.beforeEach(async ({ page }) => {
-    await page.goto("/");
+  test("page has lang attribute", async ({ page }) => {
+    const lang = await page.getAttribute("html", "lang");
+    expect(lang).toBe("en");
   });
 
-  test("Escape key closes the mobile menu", async ({ page }) => {
-    const toggle = page.locator("pixme-header").locator("button.menu-toggle");
-    await toggle.click();
+  test("gallery images have alt attributes", async ({ page }) => {
+    const gallery = page.locator("pxme-gallery");
+    const firstImg = gallery.locator(".pxme-gallery__img").first();
+    await expect(firstImg).toBeVisible({ timeout: 15_000 });
 
-    const nav = page.locator("pixme-header").locator("nav");
-    await expect(nav).toBeVisible();
-
-    // Press Escape to close
-    await page.keyboard.press("Escape");
-    await expect(nav).not.toBeVisible();
+    // alt is set to the image ID (truthy but not necessarily descriptive)
+    const alt = await firstImg.getAttribute("alt");
+    expect(alt).toBeTruthy();
   });
 
-  test("Escape returns focus to the menu toggle button", async ({ page }) => {
-    const toggle = page.locator("pixme-header").locator("button.menu-toggle");
-    await toggle.click();
-    await page.keyboard.press("Escape");
+  test("logo has alt text", async ({ page }) => {
+    const logo = page.locator(".pxme-header img");
+    await expect(logo).toHaveAttribute("alt", "Pixme");
+  });
 
-    const focusedClass = await page.evaluate(() => {
-      const header = document.querySelector("pixme-header");
-      return header?.shadowRoot?.activeElement?.className ?? "";
-    });
-    expect(focusedClass).toContain("menu-toggle");
+  test("filter toggle has title attribute", async ({ page }) => {
+    const toggle = page.locator("pxme-filter .pxme-filter__toggle");
+    await expect(toggle).toHaveAttribute("title", "Filter");
+  });
+
+  test("sort button has title attribute", async ({ page }) => {
+    const sortBtn = page.locator(".pxme-icon-btn[title='Sort']");
+    await expect(sortBtn).toHaveAttribute("title", "Sort");
   });
 });

@@ -6,12 +6,13 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
-  reporter: "html",
+  reporter: process.env.CI ? "list" : "html",
   timeout: 30_000,
 
   use: {
-    baseURL: process.env.BASE_URL || "http://localhost:3001",
+    baseURL: process.env.BASE_URL || "https://pixme.wattu.com",
     trace: "on-first-retry",
+    ignoreHTTPSErrors: true,
   },
 
   projects: [

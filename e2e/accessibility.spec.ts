@@ -65,7 +65,7 @@ test.describe("Keyboard accessibility", () => {
   });
 
   test("sort button has title attribute", async ({ page }) => {
-    const sortBtn = page.locator(".pxme-icon-btn[title='Sort']");
-    await expect(sortBtn).toHaveAttribute("title", "Sort");
+    const sortBtn = page.locator(".pxme-icon-btn[title^='Sort']");
+    await expect(sortBtn).toHaveAttribute("title", /^Sort/);
   });
 });

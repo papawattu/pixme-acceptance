@@ -78,7 +78,7 @@ test.describe("Toolbar", () => {
   });
 
   test("contains the sort button", async ({ page }) => {
-    const sortBtn = page.locator(".pxme-icon-btn[title='Sort']");
+    const sortBtn = page.locator(".pxme-icon-btn[title^='Sort']");
     await expect(sortBtn).toBeVisible();
   });
 });

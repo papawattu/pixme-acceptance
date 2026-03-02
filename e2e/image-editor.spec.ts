@@ -166,6 +166,23 @@ test.describe("Image editor — admin user", () => {
     await expect(peopleInput).toBeVisible();
   });
 
+  test("shows save and cancel buttons in editor", async ({ page }) => {
+    await page.goto("/");
+    const gallery = page.locator("pxme-gallery");
+    await expect(
+      gallery.locator(".pxme-gallery__link").first(),
+    ).toBeVisible({ timeout: 15_000 });
+
+    const firstEditBtn = gallery.locator(".pxme-edit-btn").first();
+    await firstEditBtn.click();
+
+    const editor = page.locator("pxme-image-editor");
+    await expect(editor).toBeVisible({ timeout: 5_000 });
+
+    await expect(editor.locator(".pxme-editor__save-btn")).toBeVisible();
+    await expect(editor.locator(".pxme-editor__cancel-btn")).toBeVisible();
+  });
+
   test("closes editor when close button is clicked", async ({ page }) => {
     await page.goto("/");
     const gallery = page.locator("pxme-gallery");
@@ -205,7 +222,7 @@ test.describe("Image editor — admin user", () => {
     await expect(editor).not.toBeVisible();
   });
 
-  test("adds a category via POST request", async ({ page }) => {
+  test("adds a category tag without sending API request", async ({ page }) => {
     const apiRequests: { method: string; url: string }[] = [];
 
     await page.route("**/api/images/*/categories/*", (route) => {
@@ -242,20 +259,19 @@ test.describe("Image editor — admin user", () => {
     );
     await addBtn.click();
 
-    // New tag should appear in the editor (wait for async request to complete)
+    // New tag should appear in the editor
     const tags = editor.locator(".pxme-editor__categories .pxme-editor__tag");
     await expect(tags.filter({ hasText: "TestCategory" })).toBeVisible({
       timeout: 5_000,
     });
 
-    // Verify a POST was sent to the categories endpoint
-    expect(apiRequests.length).toBeGreaterThanOrEqual(1);
-    const postReq = apiRequests.find((r) => r.method === "POST");
-    expect(postReq).toBeTruthy();
-    expect(postReq!.url).toContain("/categories/TestCategory");
+    // No API request should have been sent yet (changes are local until Save)
+    expect(apiRequests.length).toBe(0);
   });
 
-  test("removes a category via DELETE request", async ({ page }) => {
+  test("removes a category tag without sending API request", async ({
+    page,
+  }) => {
     const apiRequests: { method: string; url: string }[] = [];
 
     await page.route("**/api/images/*/categories/*", (route) => {
@@ -276,7 +292,6 @@ test.describe("Image editor — admin user", () => {
       gallery.locator(".pxme-gallery__link").first(),
     ).toBeVisible({ timeout: 15_000 });
 
-    // Find a card that has categories in its caption
     const firstEditBtn = gallery.locator(".pxme-edit-btn").first();
     await firstEditBtn.click();
 
@@ -296,18 +311,15 @@ test.describe("Image editor — admin user", () => {
       .first();
     await removeBtn.click();
 
-    // Verify a DELETE was sent
-    expect(apiRequests.length).toBeGreaterThanOrEqual(1);
-    const deleteReq = apiRequests.find((r) => r.method === "DELETE");
-    expect(deleteReq).toBeTruthy();
-    expect(deleteReq!.url).toContain("/categories/");
-
     // Tag count should decrease
     const newTagCount = await categoryTags.count();
     expect(newTagCount).toBeLessThan(tagCount);
+
+    // No API request should have been sent yet
+    expect(apiRequests.length).toBe(0);
   });
 
-  test("adds a person via POST request", async ({ page }) => {
+  test("adds a person tag without sending API request", async ({ page }) => {
     const apiRequests: { method: string; url: string }[] = [];
 
     await page.route("**/api/images/*/people/*", (route) => {
@@ -344,20 +356,19 @@ test.describe("Image editor — admin user", () => {
     );
     await addBtn.click();
 
-    // New tag should appear in the editor (wait for async request to complete)
+    // New tag should appear in the editor
     const tags = editor.locator(".pxme-editor__people .pxme-editor__tag");
     await expect(tags.filter({ hasText: "TestPerson" })).toBeVisible({
       timeout: 5_000,
     });
 
-    // Verify a POST was sent to the people endpoint
-    expect(apiRequests.length).toBeGreaterThanOrEqual(1);
-    const postReq = apiRequests.find((r) => r.method === "POST");
-    expect(postReq).toBeTruthy();
-    expect(postReq!.url).toContain("/people/TestPerson");
+    // No API request should have been sent yet
+    expect(apiRequests.length).toBe(0);
   });
 
-  test("removes a person via DELETE request", async ({ page }) => {
+  test("removes a person tag without sending API request", async ({
+    page,
+  }) => {
     const apiRequests: { method: string; url: string }[] = [];
 
     await page.route("**/api/images/*/people/*", (route) => {
@@ -397,34 +408,304 @@ test.describe("Image editor — admin user", () => {
       .first();
     await removeBtn.click();
 
-    // Verify a DELETE was sent
-    expect(apiRequests.length).toBeGreaterThanOrEqual(1);
-    const deleteReq = apiRequests.find((r) => r.method === "DELETE");
-    expect(deleteReq).toBeTruthy();
-    expect(deleteReq!.url).toContain("/people/");
-
     // Tag count should decrease
     const newTagCount = await peopleTags.count();
     expect(newTagCount).toBeLessThan(tagCount);
+
+    // No API request should have been sent yet
+    expect(apiRequests.length).toBe(0);
   });
 
-  test("gallery refreshes after editor is closed with changes", async ({
+  test("save button sends pending add requests to API", async ({ page }) => {
+    const apiRequests: { method: string; url: string }[] = [];
+
+    await page.route("**/api/images/*/categories/*", (route) => {
+      apiRequests.push({
+        method: route.request().method(),
+        url: route.request().url(),
+      });
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ success: true }),
+      });
+    });
+
+    await page.route("**/api/images/*/people/*", (route) => {
+      apiRequests.push({
+        method: route.request().method(),
+        url: route.request().url(),
+      });
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ success: true }),
+      });
+    });
+
+    await page.goto("/");
+    const gallery = page.locator("pxme-gallery");
+    await expect(
+      gallery.locator(".pxme-gallery__link").first(),
+    ).toBeVisible({ timeout: 15_000 });
+
+    const firstEditBtn = gallery.locator(".pxme-edit-btn").first();
+    await firstEditBtn.click();
+
+    const editor = page.locator("pxme-image-editor");
+    await expect(editor).toBeVisible({ timeout: 5_000 });
+
+    // Add a category
+    const categoryInput = editor.locator(
+      ".pxme-editor__categories .pxme-editor__input",
+    );
+    await categoryInput.fill("SaveTestCat");
+    const catAddBtn = editor.locator(
+      ".pxme-editor__categories .pxme-editor__add-btn",
+    );
+    await catAddBtn.click();
+    await expect(
+      editor
+        .locator(".pxme-editor__categories .pxme-editor__tag")
+        .filter({ hasText: "SaveTestCat" }),
+    ).toBeVisible({ timeout: 5_000 });
+
+    // Add a person
+    const peopleInput = editor.locator(
+      ".pxme-editor__people .pxme-editor__input",
+    );
+    await peopleInput.fill("SaveTestPerson");
+    const pplAddBtn = editor.locator(
+      ".pxme-editor__people .pxme-editor__add-btn",
+    );
+    await pplAddBtn.click();
+    await expect(
+      editor
+        .locator(".pxme-editor__people .pxme-editor__tag")
+        .filter({ hasText: "SaveTestPerson" }),
+    ).toBeVisible({ timeout: 5_000 });
+
+    // No API calls yet
+    expect(apiRequests.length).toBe(0);
+
+    // Click Save
+    const saveBtn = editor.locator(".pxme-editor__save-btn");
+    await saveBtn.click();
+
+    // Editor should close
+    await expect(editor).not.toBeVisible({ timeout: 5_000 });
+
+    // API requests should have been sent
+    const catPost = apiRequests.find(
+      (r) => r.method === "POST" && r.url.includes("/categories/SaveTestCat"),
+    );
+    expect(catPost).toBeTruthy();
+
+    const pplPost = apiRequests.find(
+      (r) => r.method === "POST" && r.url.includes("/people/SaveTestPerson"),
+    );
+    expect(pplPost).toBeTruthy();
+  });
+
+  test("cancel button closes editor without sending API requests", async ({
     page,
   }) => {
+    const apiRequests: { method: string; url: string }[] = [];
+
+    await page.route("**/api/images/*/categories/*", (route) => {
+      apiRequests.push({
+        method: route.request().method(),
+        url: route.request().url(),
+      });
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ success: true }),
+      });
+    });
+
+    await page.goto("/");
+    const gallery = page.locator("pxme-gallery");
+    await expect(
+      gallery.locator(".pxme-gallery__link").first(),
+    ).toBeVisible({ timeout: 15_000 });
+
+    const firstEditBtn = gallery.locator(".pxme-edit-btn").first();
+    await firstEditBtn.click();
+
+    const editor = page.locator("pxme-image-editor");
+    await expect(editor).toBeVisible({ timeout: 5_000 });
+
+    // Add a category (local only)
+    const categoryInput = editor.locator(
+      ".pxme-editor__categories .pxme-editor__input",
+    );
+    await categoryInput.fill("CancelTestCat");
+    const addBtn = editor.locator(
+      ".pxme-editor__categories .pxme-editor__add-btn",
+    );
+    await addBtn.click();
+    await expect(
+      editor
+        .locator(".pxme-editor__categories .pxme-editor__tag")
+        .filter({ hasText: "CancelTestCat" }),
+    ).toBeVisible({ timeout: 5_000 });
+
+    // Click Cancel
+    const cancelBtn = editor.locator(".pxme-editor__cancel-btn");
+    await cancelBtn.click();
+
+    // Editor should close
+    await expect(editor).not.toBeVisible();
+
+    // No API requests should have been sent
+    expect(apiRequests.length).toBe(0);
+  });
+
+  test("shows category autocomplete suggestions when typing", async ({
+    page,
+  }) => {
+    await page.route("**/api/categories/", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          categories: ["Nature", "Landscape", "City", "Architecture"],
+        }),
+      }),
+    );
+
+    await page.goto("/");
+    const gallery = page.locator("pxme-gallery");
+    await expect(
+      gallery.locator(".pxme-gallery__link").first(),
+    ).toBeVisible({ timeout: 15_000 });
+
+    const firstEditBtn = gallery.locator(".pxme-edit-btn").first();
+    // Wait for the categories fetch to complete after the editor opens
+    const catResponsePromise = page.waitForResponse("**/api/categories/");
+    await firstEditBtn.click();
+
+    const editor = page.locator("pxme-image-editor");
+    await expect(editor).toBeVisible({ timeout: 5_000 });
+    await catResponsePromise;
+
+    const categoryInput = editor.locator(
+      ".pxme-editor__categories .pxme-editor__input",
+    );
+    await categoryInput.fill("nat");
+
+    const suggestions = editor.locator(
+      ".pxme-editor__categories .pxme-editor__suggestion",
+    );
+    await expect(suggestions.filter({ hasText: "Nature" })).toBeVisible({
+      timeout: 5_000,
+    });
+  });
+
+  test("shows people autocomplete suggestions when typing", async ({
+    page,
+  }) => {
+    await page.route("**/api/people/", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          people: [
+            { id: "1", name: "Alice Johnson" },
+            { id: "2", name: "Bob Smith" },
+          ],
+        }),
+      }),
+    );
+
+    await page.goto("/");
+    const gallery = page.locator("pxme-gallery");
+    await expect(
+      gallery.locator(".pxme-gallery__link").first(),
+    ).toBeVisible({ timeout: 15_000 });
+
+    const firstEditBtn = gallery.locator(".pxme-edit-btn").first();
+    const pplResponsePromise = page.waitForResponse("**/api/people/");
+    await firstEditBtn.click();
+
+    const editor = page.locator("pxme-image-editor");
+    await expect(editor).toBeVisible({ timeout: 5_000 });
+    await pplResponsePromise;
+
+    const peopleInput = editor.locator(
+      ".pxme-editor__people .pxme-editor__input",
+    );
+    await peopleInput.fill("ali");
+
+    const suggestions = editor.locator(
+      ".pxme-editor__people .pxme-editor__suggestion",
+    );
+    await expect(
+      suggestions.filter({ hasText: "Alice Johnson" }),
+    ).toBeVisible({
+      timeout: 5_000,
+    });
+  });
+
+  test("selecting autocomplete suggestion adds tag", async ({ page }) => {
+    await page.route("**/api/categories/", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          categories: ["Nature", "Landscape", "City"],
+        }),
+      }),
+    );
+
+    await page.goto("/");
+    const gallery = page.locator("pxme-gallery");
+    await expect(
+      gallery.locator(".pxme-gallery__link").first(),
+    ).toBeVisible({ timeout: 15_000 });
+
+    const firstEditBtn = gallery.locator(".pxme-edit-btn").first();
+    const catResponsePromise = page.waitForResponse("**/api/categories/");
+    await firstEditBtn.click();
+
+    const editor = page.locator("pxme-image-editor");
+    await expect(editor).toBeVisible({ timeout: 5_000 });
+    await catResponsePromise;
+
+    const categoryInput = editor.locator(
+      ".pxme-editor__categories .pxme-editor__input",
+    );
+    await categoryInput.fill("land");
+
+    const suggestion = editor
+      .locator(".pxme-editor__categories .pxme-editor__suggestion")
+      .filter({ hasText: "Landscape" });
+    await expect(suggestion).toBeVisible({ timeout: 5_000 });
+    await suggestion.click();
+
+    // Tag should appear
+    const tags = editor.locator(".pxme-editor__categories .pxme-editor__tag");
+    await expect(tags.filter({ hasText: "Landscape" })).toBeVisible({
+      timeout: 5_000,
+    });
+
+    // Input should be cleared
+    await expect(categoryInput).toHaveValue("");
+  });
+
+  test("gallery refreshes after save", async ({ page }) => {
     let galleryFetchCount = 0;
 
-    // Track gallery image fetches (the main listing endpoint)
     await page.route("**/api/images/?**", (route) => {
       galleryFetchCount++;
       route.continue();
     });
-    // Also track fetches without query params
     await page.route("**/api/images/", (route) => {
       galleryFetchCount++;
       route.continue();
     });
 
-    // Mock category add to succeed
     await page.route("**/api/images/*/categories/*", (route) => {
       route.fulfill({
         status: 200,
@@ -439,10 +720,8 @@ test.describe("Image editor — admin user", () => {
       gallery.locator(".pxme-gallery__link").first(),
     ).toBeVisible({ timeout: 15_000 });
 
-    // Record fetch count after initial load
     const initialFetchCount = galleryFetchCount;
 
-    // Open editor
     const firstEditBtn = gallery.locator(".pxme-edit-btn").first();
     await firstEditBtn.click();
 
@@ -454,31 +733,28 @@ test.describe("Image editor — admin user", () => {
       ".pxme-editor__categories .pxme-editor__input",
     );
     await categoryInput.fill("RefreshTest");
-
     const addBtn = editor.locator(
       ".pxme-editor__categories .pxme-editor__add-btn",
     );
     await addBtn.click();
+    await expect(
+      editor
+        .locator(".pxme-editor__categories .pxme-editor__tag")
+        .filter({ hasText: "RefreshTest" }),
+    ).toBeVisible({ timeout: 5_000 });
 
-    // Wait for the tag to appear (confirms add succeeded)
-    const tags = editor.locator(".pxme-editor__categories .pxme-editor__tag");
-    await expect(tags.filter({ hasText: "RefreshTest" })).toBeVisible({
-      timeout: 5_000,
-    });
+    // Click Save (not Close)
+    const saveBtn = editor.locator(".pxme-editor__save-btn");
+    await saveBtn.click();
+    await expect(editor).not.toBeVisible({ timeout: 5_000 });
 
-    // Close editor
-    const closeBtn = editor.locator(".pxme-editor__close");
-    await closeBtn.click();
-    await expect(editor).not.toBeVisible();
-
-    // Wait for gallery to re-fetch images
+    // Wait for gallery to re-fetch
     await page.waitForTimeout(1_000);
 
-    // Gallery should have fetched images again after closing the dirty editor
     expect(galleryFetchCount).toBeGreaterThan(initialFetchCount);
   });
 
-  test("gallery does not refresh when editor closed without changes", async ({
+  test("gallery does not refresh when editor is cancelled", async ({
     page,
   }) => {
     let galleryFetchCount = 0;
@@ -500,21 +776,19 @@ test.describe("Image editor — admin user", () => {
 
     const initialFetchCount = galleryFetchCount;
 
-    // Open editor
     const firstEditBtn = gallery.locator(".pxme-edit-btn").first();
     await firstEditBtn.click();
 
     const editor = page.locator("pxme-image-editor");
     await expect(editor).toBeVisible({ timeout: 5_000 });
 
-    // Close without making changes
-    const closeBtn = editor.locator(".pxme-editor__close");
-    await closeBtn.click();
+    // Close without saving (cancel)
+    const cancelBtn = editor.locator(".pxme-editor__cancel-btn");
+    await cancelBtn.click();
     await expect(editor).not.toBeVisible();
 
     await page.waitForTimeout(1_000);
 
-    // Gallery should NOT have re-fetched
     expect(galleryFetchCount).toBe(initialFetchCount);
   });
 });

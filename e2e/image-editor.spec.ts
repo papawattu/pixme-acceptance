@@ -565,6 +565,8 @@ test.describe("Image editor — admin user", () => {
   test("shows category autocomplete suggestions when typing", async ({
     page,
   }) => {
+    // Mock both endpoints since _fetchSuggestions uses Promise.all —
+    // _allCategories isn't set until both /api/categories/ and /api/people/ resolve
     await page.route("**/api/categories/", (route) =>
       route.fulfill({
         status: 200,
@@ -572,6 +574,13 @@ test.describe("Image editor — admin user", () => {
         body: JSON.stringify({
           categories: ["Nature", "Landscape", "City", "Architecture"],
         }),
+      }),
+    );
+    await page.route("**/api/people/", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ people: [] }),
       }),
     );
 
@@ -582,13 +591,15 @@ test.describe("Image editor — admin user", () => {
     ).toBeVisible({ timeout: 15_000 });
 
     const firstEditBtn = gallery.locator(".pxme-edit-btn").first();
-    // Wait for the categories fetch to complete after the editor opens
+    // Wait for both fetches to complete since _fetchSuggestions uses Promise.all
     const catResponsePromise = page.waitForResponse("**/api/categories/");
+    const pplResponsePromise = page.waitForResponse("**/api/people/");
     await firstEditBtn.click();
 
     const editor = page.locator("pxme-image-editor");
     await expect(editor).toBeVisible({ timeout: 5_000 });
     await catResponsePromise;
+    await pplResponsePromise;
 
     const categoryInput = editor.locator(
       ".pxme-editor__categories .pxme-editor__input",
@@ -607,6 +618,15 @@ test.describe("Image editor — admin user", () => {
   test("shows people autocomplete suggestions when typing", async ({
     page,
   }) => {
+    // Mock both endpoints since _fetchSuggestions uses Promise.all —
+    // _allPeople isn't set until both /api/categories/ and /api/people/ resolve
+    await page.route("**/api/categories/", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ categories: [] }),
+      }),
+    );
     await page.route("**/api/people/", (route) =>
       route.fulfill({
         status: 200,
@@ -627,11 +647,14 @@ test.describe("Image editor — admin user", () => {
     ).toBeVisible({ timeout: 15_000 });
 
     const firstEditBtn = gallery.locator(".pxme-edit-btn").first();
+    // Wait for both fetches to complete since _fetchSuggestions uses Promise.all
+    const catResponsePromise = page.waitForResponse("**/api/categories/");
     const pplResponsePromise = page.waitForResponse("**/api/people/");
     await firstEditBtn.click();
 
     const editor = page.locator("pxme-image-editor");
     await expect(editor).toBeVisible({ timeout: 5_000 });
+    await catResponsePromise;
     await pplResponsePromise;
 
     const peopleInput = editor.locator(
@@ -651,6 +674,7 @@ test.describe("Image editor — admin user", () => {
   });
 
   test("selecting autocomplete suggestion adds tag", async ({ page }) => {
+    // Mock both endpoints since _fetchSuggestions uses Promise.all
     await page.route("**/api/categories/", (route) =>
       route.fulfill({
         status: 200,
@@ -658,6 +682,13 @@ test.describe("Image editor — admin user", () => {
         body: JSON.stringify({
           categories: ["Nature", "Landscape", "City"],
         }),
+      }),
+    );
+    await page.route("**/api/people/", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ people: [] }),
       }),
     );
 
@@ -669,11 +700,13 @@ test.describe("Image editor — admin user", () => {
 
     const firstEditBtn = gallery.locator(".pxme-edit-btn").first();
     const catResponsePromise = page.waitForResponse("**/api/categories/");
+    const pplResponsePromise = page.waitForResponse("**/api/people/");
     await firstEditBtn.click();
 
     const editor = page.locator("pxme-image-editor");
     await expect(editor).toBeVisible({ timeout: 5_000 });
     await catResponsePromise;
+    await pplResponsePromise;
 
     const categoryInput = editor.locator(
       ".pxme-editor__categories .pxme-editor__input",
@@ -793,5 +826,117 @@ test.describe("Image editor — admin user", () => {
     await page.waitForTimeout(1_000);
 
     expect(galleryFetchCount).toBe(initialFetchCount);
+  });
+
+  test("adds a new category and confirms it appears after save", async ({
+    page,
+  }) => {
+    const newCategory = "AcceptanceTestCat";
+    let postRequest: { method: string; url: string } | null = null;
+    let galleryLoadCount = 0;
+
+    // Intercept POST to categories API — mock success
+    await page.route("**/api/images/*/categories/*", (route) => {
+      if (route.request().method() === "POST") {
+        postRequest = {
+          method: route.request().method(),
+          url: route.request().url(),
+        };
+        route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ success: true }),
+        });
+      } else {
+        route.continue();
+      }
+    });
+
+    // Intercept gallery list requests — after the first load, inject
+    // the new category into the first image to simulate backend persistence
+    const injectCategory: Parameters<typeof page.route>[1] = async (route) => {
+      galleryLoadCount++;
+      if (galleryLoadCount <= 1) {
+        route.continue();
+        return;
+      }
+      const response = await route.fetch();
+      const json = await response.json();
+      if (json.images && json.images.length > 0) {
+        const cats = json.images[0].categories || [];
+        if (!cats.includes(newCategory)) {
+          json.images[0].categories = [...cats, newCategory];
+        }
+      }
+      route.fulfill({
+        status: response.status(),
+        contentType: "application/json",
+        body: JSON.stringify(json),
+      });
+    };
+
+    await page.route("**/api/images/?**", injectCategory);
+    await page.route("**/api/images/", injectCategory);
+
+    await page.goto("/");
+    const gallery = page.locator("pxme-gallery");
+    await expect(
+      gallery.locator(".pxme-gallery__link").first(),
+    ).toBeVisible({ timeout: 15_000 });
+
+    // Open editor on first image
+    const firstEditBtn = gallery.locator(".pxme-edit-btn").first();
+    await firstEditBtn.click();
+
+    const editor = page.locator("pxme-image-editor");
+    await expect(editor).toBeVisible({ timeout: 5_000 });
+
+    // Add the new category
+    const categoryInput = editor.locator(
+      ".pxme-editor__categories .pxme-editor__input",
+    );
+    await categoryInput.fill(newCategory);
+    const addBtn = editor.locator(
+      ".pxme-editor__categories .pxme-editor__add-btn",
+    );
+    await addBtn.click();
+
+    // Verify tag appears in editor
+    await expect(
+      editor
+        .locator(".pxme-editor__categories .pxme-editor__tag")
+        .filter({ hasText: newCategory }),
+    ).toBeVisible({ timeout: 5_000 });
+
+    // Click Save
+    const saveBtn = editor.locator(".pxme-editor__save-btn");
+    await saveBtn.click();
+
+    // Verify editor closes
+    await expect(editor).not.toBeVisible({ timeout: 5_000 });
+
+    // Verify POST was sent to the correct endpoint
+    expect(postRequest).toBeTruthy();
+    expect(postRequest!.method).toBe("POST");
+    expect(postRequest!.url).toContain(
+      `/categories/${encodeURIComponent(newCategory)}`,
+    );
+
+    // Wait for gallery to refresh with injected data
+    await page.waitForTimeout(1_000);
+
+    // Reopen editor on first image
+    const editBtnAfterRefresh = gallery.locator(".pxme-edit-btn").first();
+    await editBtnAfterRefresh.click();
+
+    const editorAfterRefresh = page.locator("pxme-image-editor");
+    await expect(editorAfterRefresh).toBeVisible({ timeout: 5_000 });
+
+    // Confirm the new category persists in the editor
+    await expect(
+      editorAfterRefresh
+        .locator(".pxme-editor__categories .pxme-editor__tag")
+        .filter({ hasText: newCategory }),
+    ).toBeVisible({ timeout: 5_000 });
   });
 });

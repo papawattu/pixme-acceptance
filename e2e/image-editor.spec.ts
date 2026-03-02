@@ -593,7 +593,8 @@ test.describe("Image editor — admin user", () => {
     const categoryInput = editor.locator(
       ".pxme-editor__categories .pxme-editor__input",
     );
-    await categoryInput.fill("nat");
+    await categoryInput.click();
+    await categoryInput.pressSequentially("nat");
 
     const suggestions = editor.locator(
       ".pxme-editor__categories .pxme-editor__suggestion",
@@ -636,7 +637,8 @@ test.describe("Image editor — admin user", () => {
     const peopleInput = editor.locator(
       ".pxme-editor__people .pxme-editor__input",
     );
-    await peopleInput.fill("ali");
+    await peopleInput.click();
+    await peopleInput.pressSequentially("ali");
 
     const suggestions = editor.locator(
       ".pxme-editor__people .pxme-editor__suggestion",
@@ -676,7 +678,8 @@ test.describe("Image editor — admin user", () => {
     const categoryInput = editor.locator(
       ".pxme-editor__categories .pxme-editor__input",
     );
-    await categoryInput.fill("land");
+    await categoryInput.click();
+    await categoryInput.pressSequentially("land");
 
     const suggestion = editor
       .locator(".pxme-editor__categories .pxme-editor__suggestion")

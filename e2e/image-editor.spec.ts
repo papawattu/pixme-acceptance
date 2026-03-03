@@ -731,17 +731,6 @@ test.describe("Image editor — admin user", () => {
   });
 
   test("gallery refreshes after save", async ({ page }) => {
-    let galleryFetchCount = 0;
-
-    await page.route("**/api/images/?**", (route) => {
-      galleryFetchCount++;
-      route.continue();
-    });
-    await page.route("**/api/images/", (route) => {
-      galleryFetchCount++;
-      route.continue();
-    });
-
     await page.route("**/api/images/*/categories/*", (route) => {
       route.fulfill({
         status: 200,
@@ -756,7 +745,11 @@ test.describe("Image editor — admin user", () => {
       gallery.locator(".pxme-gallery__link").first(),
     ).toBeVisible({ timeout: 15_000 });
 
-    const initialFetchCount = galleryFetchCount;
+    // Capture the first image's ID for verifying the surgical update
+    const imageId = await gallery
+      .locator(".pxme-gallery__link")
+      .first()
+      .getAttribute("data-id");
 
     const firstEditBtn = gallery.locator(".pxme-edit-btn").first();
     await firstEditBtn.click();
@@ -779,15 +772,22 @@ test.describe("Image editor — admin user", () => {
         .filter({ hasText: "RefreshTest" }),
     ).toBeVisible({ timeout: 5_000 });
 
+    // Listen for the single-image fetch triggered by surgical gallery update
+    const singleImageFetch = page.waitForRequest(
+      (req) =>
+        req.url().includes(`/api/images/${imageId}`) &&
+        !req.url().includes("/categories/") &&
+        req.method() === "GET",
+    );
+
     // Click Save (not Close)
     const saveBtn = editor.locator(".pxme-editor__save-btn");
     await saveBtn.click();
     await expect(editor).not.toBeVisible({ timeout: 5_000 });
 
-    // Wait for gallery to re-fetch
-    await page.waitForTimeout(1_000);
-
-    expect(galleryFetchCount).toBeGreaterThan(initialFetchCount);
+    // Verify a single-image fetch was triggered (surgical update, not full reload)
+    const req = await singleImageFetch;
+    expect(req.url()).toContain(`/api/images/${imageId}`);
   });
 
   test("gallery does not refresh when editor is cancelled", async ({
@@ -833,7 +833,6 @@ test.describe("Image editor — admin user", () => {
   }) => {
     const newCategory = "AcceptanceTestCat";
     let postRequest: { method: string; url: string } | null = null;
-    let galleryLoadCount = 0;
 
     // Intercept POST to categories API — mock success
     await page.route("**/api/images/*/categories/*", (route) => {
@@ -852,37 +851,44 @@ test.describe("Image editor — admin user", () => {
       }
     });
 
-    // Intercept gallery list requests — after the first load, inject
-    // the new category into the first image to simulate backend persistence
-    const injectCategory: Parameters<typeof page.route>[1] = async (route) => {
-      galleryLoadCount++;
-      if (galleryLoadCount <= 1) {
-        route.continue();
-        return;
-      }
-      const response = await route.fetch();
-      const json = await response.json();
-      if (json.images && json.images.length > 0) {
-        const cats = json.images[0].categories || [];
-        if (!cats.includes(newCategory)) {
-          json.images[0].categories = [...cats, newCategory];
-        }
-      }
-      route.fulfill({
-        status: response.status(),
-        contentType: "application/json",
-        body: JSON.stringify(json),
-      });
-    };
-
-    await page.route("**/api/images/?**", injectCategory);
-    await page.route("**/api/images/", injectCategory);
-
     await page.goto("/");
     const gallery = page.locator("pxme-gallery");
     await expect(
       gallery.locator(".pxme-gallery__link").first(),
     ).toBeVisible({ timeout: 15_000 });
+
+    // Capture the first image's ID for intercepting the surgical update
+    const imageId = await gallery
+      .locator(".pxme-gallery__link")
+      .first()
+      .getAttribute("data-id");
+
+    // Intercept single-image fetch — inject the new category to simulate
+    // backend persistence (the surgical update fetches GET /api/images/{id}).
+    // The single-image endpoint returns { "image": { ... } } (wrapped).
+    const singleImagePath = `/api/images/${imageId}`;
+    await page.route(
+      (url) => url.pathname === singleImagePath,
+      async (route) => {
+        if (route.request().method() !== "GET") {
+          route.continue();
+          return;
+        }
+        const response = await route.fetch();
+        const json = await response.json();
+        // Unwrap: single-image endpoint returns { "image": { ... } }
+        const img = json.image || json;
+        const cats = img.categories || [];
+        if (!cats.includes(newCategory)) {
+          img.categories = [...cats, newCategory];
+        }
+        route.fulfill({
+          status: response.status(),
+          contentType: "application/json",
+          body: JSON.stringify(json),
+        });
+      },
+    );
 
     // Open editor on first image
     const firstEditBtn = gallery.locator(".pxme-edit-btn").first();
@@ -908,6 +914,14 @@ test.describe("Image editor — admin user", () => {
         .filter({ hasText: newCategory }),
     ).toBeVisible({ timeout: 5_000 });
 
+    // Set up response listener BEFORE clicking save to catch the surgical update
+    const singleImageResponse = page.waitForResponse(
+      (resp) =>
+        resp.url().includes(singleImagePath) &&
+        !resp.url().includes("/categories/") &&
+        resp.request().method() === "GET",
+    );
+
     // Click Save
     const saveBtn = editor.locator(".pxme-editor__save-btn");
     await saveBtn.click();
@@ -922,8 +936,8 @@ test.describe("Image editor — admin user", () => {
       `/categories/${encodeURIComponent(newCategory)}`,
     );
 
-    // Wait for gallery to refresh with injected data
-    await page.waitForTimeout(1_000);
+    // Wait for the surgical single-image update to complete
+    await singleImageResponse;
 
     // Reopen editor on first image
     const editBtnAfterRefresh = gallery.locator(".pxme-edit-btn").first();

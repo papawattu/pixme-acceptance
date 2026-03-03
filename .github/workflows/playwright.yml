@@ -7,13 +7,25 @@ on:
         description: "Base URL to run tests against"
         required: true
         default: "https://pixme.wattu.com"
+  repository_dispatch:
+    types: [run-tests]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
 
 jobs:
   test:
     timeout-minutes: 60
     runs-on: ubuntu-latest
-    env:
-      BASE_URL: ${{ github.event.inputs.base_url }}
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
 
@@ -29,13 +41,71 @@ jobs:
         run: npx playwright install --with-deps
 
       - name: Run Playwright tests
+        id: tests
+        continue-on-error: true
         run: npx playwright test
         env:
-          BASE_URL: ${{ github.event.inputs.base_url }}
+          BASE_URL: ${{ github.event.inputs.base_url || github.event.client_payload.base_url || 'https://pixme.wattu.com' }}
 
-      - uses: actions/upload-artifact@v4
+      - name: Generate badge from results
         if: ${{ !cancelled() }}
+        run: |
+          node -e "
+          const fs = require('fs');
+          const r = JSON.parse(fs.readFileSync('test-results.json', 'utf8'));
+          let passed = 0, failed = 0, skipped = 0;
+          function walk(suites) {
+            for (const s of suites) {
+              for (const spec of s.specs || []) {
+                for (const test of spec.tests || []) {
+                  if (test.status === 'expected') passed++;
+                  else if (test.status === 'skipped') skipped++;
+                  else if (test.status === 'flaky') passed++;
+                  else failed++;
+                }
+              }
+              walk(s.suites || []);
+            }
+          }
+          walk(r.suites);
+          const color = failed > 0 ? 'red' : 'brightgreen';
+          const parts = [];
+          if (passed) parts.push(passed + ' passed');
+          if (failed) parts.push(failed + ' failed');
+          if (skipped) parts.push(skipped + ' skipped');
+          const badge = {
+            schemaVersion: 1,
+            label: 'tests',
+            message: parts.join(', ') || 'no tests',
+            color
+          };
+          fs.writeFileSync('playwright-report/badge.json', JSON.stringify(badge));
+          console.log('Badge:', JSON.stringify(badge));
+          "
+
+      - name: Upload artifact
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
         with:
           name: playwright-report
           path: playwright-report/
           retention-days: 30
+
+      - name: Configure Pages
+        if: ${{ !cancelled() }}
+        uses: actions/configure-pages@v5
+
+      - name: Upload to Pages
+        if: ${{ !cancelled() }}
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: playwright-report/
+
+      - name: Deploy to Pages
+        if: ${{ !cancelled() }}
+        id: deploy
+        uses: actions/deploy-pages@v4
+
+      - name: Fail workflow if tests failed
+        if: steps.tests.outcome == 'failure'
+        run: exit 1

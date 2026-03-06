@@ -10,29 +10,20 @@ const authenticatedSession = {
   expires: "2099-12-31T23:59:59.000Z",
 };
 
-test.describe("Popup auth preview", () => {
-  test("main landing page now uses popup sign-in CTA", async ({ page }) => {
+test.describe("Popup auth flow", () => {
+  test("main landing page exposes popup sign-in CTA", async ({ page }) => {
     await page.goto("/");
 
-    const popupPromise = page.waitForEvent("popup");
-    await page.getByRole("button", { name: "Sign in to continue" }).click();
-    const popup = await popupPromise;
-    await popup.waitForURL(/\/auth-launch\.html\?callbackUrl=/);
-  });
-
-  test("shows preview hero for anonymous users", async ({ page }) => {
-    await page.goto("/preview-auth.html");
-
     await expect(page.locator("pxme-hero")).toContainText(
-      "Try the same-page sign-in preview.",
+      "A private home for the moments that matter.",
     );
     await expect(page.locator("pxme-hero")).toContainText(
-      "Try sign in without leaving the page",
+      "Sign in to continue",
     );
     await expect(page.locator("pxme-gallery")).not.toBeVisible();
   });
 
-  test("popup success refreshes into gallery view", async ({ page }) => {
+  test("popup success refreshes the main page into gallery view", async ({ page }) => {
     let authed = false;
 
     await page.route("**/auth/session", async (route) => {
@@ -51,14 +42,14 @@ test.describe("Popup auth preview", () => {
       });
     });
 
-    await page.goto("/preview-auth.html");
+    await page.goto("/");
 
     await page.evaluate(() => {
       window.open = () => ({ closed: false, close() {} });
     });
 
     const button = page.getByRole("button", {
-      name: "Try sign in without leaving the page",
+      name: "Sign in to continue",
     });
     await button.click();
 
@@ -73,27 +64,27 @@ test.describe("Popup auth preview", () => {
   });
 
   test("popup blocked falls back to redirect signin URL", async ({ page }) => {
-    await page.goto("/preview-auth.html");
+    await page.goto("/");
 
     await page.evaluate(() => {
       window.open = () => null;
     });
 
     await page.getByRole("button", {
-      name: "Try sign in without leaving the page",
+      name: "Sign in to continue",
     }).click();
 
     await expect(page).toHaveURL(/\/auth\/signin\?callbackUrl=/);
   });
 
-  test("preview popup launches direct provider flow via launcher page", async ({
+  test("main popup launches direct provider flow via launcher page", async ({
     page,
   }) => {
-    await page.goto("/preview-auth.html");
+    await page.goto("/");
 
     const popupPromise = page.waitForEvent("popup");
     await page.getByRole("button", {
-      name: "Try sign in without leaving the page",
+      name: "Sign in to continue",
     }).click();
 
     const popup = await popupPromise;

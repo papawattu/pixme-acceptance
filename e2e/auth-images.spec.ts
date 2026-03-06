@@ -14,6 +14,12 @@ test.describe("Image access control — unauthenticated", () => {
   test("landing page does not reveal gallery images", async ({ page }) => {
     await page.goto("/");
 
+    await expect(page.locator("pxme-hero")).toContainText(
+      "A private home for the moments that matter.",
+    );
+    await expect(page.locator("pxme-hero")).toContainText(
+      "Sign in to continue",
+    );
     await expect(page.locator("pxme-gallery")).not.toBeVisible();
     await expect(page.locator("img[src*='/thumbnails/']")).toHaveCount(0);
     await expect(page.locator("a[href*='/view.html?img=']")).toHaveCount(0);

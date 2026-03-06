@@ -6,6 +6,7 @@ const authenticatedSession = {
     email: "test@example.com",
     image: "https://example.com/avatar.png",
     role: "admin",
+    approved: true,
   },
   expires: "2099-12-31T23:59:59.000Z",
 };

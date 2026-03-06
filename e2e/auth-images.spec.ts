@@ -6,6 +6,18 @@ const authenticatedSession = {
     email: "test@example.com",
     image: "https://example.com/avatar.png",
     role: "admin",
+    approved: true,
+  },
+  expires: "2099-12-31T23:59:59.000Z",
+};
+
+const pendingSession = {
+  user: {
+    name: "Pending User",
+    email: "pending@example.com",
+    image: "https://example.com/avatar.png",
+    role: "user",
+    approved: false,
   },
   expires: "2099-12-31T23:59:59.000Z",
 };
@@ -86,5 +98,35 @@ test.describe("Image access control — authenticated", () => {
     await firstImage.click();
 
     await expect(page).toHaveURL(/\/view\.html\?img=/);
+  });
+});
+
+test.describe("Image access control — pending approval", () => {
+  test.beforeEach(async ({ page }) => {
+    await page.route("**/auth/session", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(pendingSession),
+      }),
+    );
+  });
+
+  test("pending users see approval page on landing", async ({ page }) => {
+    await page.goto("/");
+
+    await expect(page.locator("pxme-pending")).toContainText(
+      "Your account is awaiting approval.",
+    );
+    await expect(page.locator("pxme-gallery")).not.toBeVisible();
+  });
+
+  test("pending users see approval page on viewer route", async ({ page }) => {
+    await page.goto("/view.html?img=%2Fimages%2Fprotected.jpg");
+
+    await expect(page.locator("pxme-pending")).toContainText(
+      "Your account is awaiting approval.",
+    );
+    await expect(page.locator("pxme-viewer")).not.toBeVisible();
   });
 });

@@ -22,10 +22,7 @@ test.describe("SSE — unauthenticated", () => {
     });
 
     await page.goto("/");
-    const gallery = page.locator("pxme-gallery");
-    await expect(
-      gallery.locator(".pxme-gallery__link").first(),
-    ).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator("pxme-gallery")).not.toBeVisible();
 
     // Give time for any async SSE connection to be attempted
     await page.waitForTimeout(2_000);

@@ -67,18 +67,18 @@ test.describe("Toolbar", () => {
     await page.goto("/");
   });
 
-  test("renders the toolbar section", async ({ page }) => {
+  test("does not render the toolbar for unauthenticated users", async ({ page }) => {
     const toolbar = page.locator(".pxme-toolbar");
-    await expect(toolbar).toBeVisible();
+    await expect(toolbar).not.toBeVisible();
   });
 
-  test("contains the filter component", async ({ page }) => {
+  test("does not show the filter component for unauthenticated users", async ({ page }) => {
     const filter = page.locator("pxme-filter");
-    await expect(filter).toBeVisible();
+    await expect(filter).not.toBeVisible();
   });
 
-  test("contains the sort button", async ({ page }) => {
+  test("does not show the sort button for unauthenticated users", async ({ page }) => {
     const sortBtn = page.locator(".pxme-icon-btn[title^='Sort']");
-    await expect(sortBtn).toBeVisible();
+    await expect(sortBtn).not.toBeVisible();
   });
 });

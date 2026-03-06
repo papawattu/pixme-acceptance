@@ -11,6 +11,15 @@ const authenticatedSession = {
 };
 
 test.describe("Popup auth preview", () => {
+  test("main landing page now uses popup sign-in CTA", async ({ page }) => {
+    await page.goto("/");
+
+    const popupPromise = page.waitForEvent("popup");
+    await page.getByRole("button", { name: "Sign in to continue" }).click();
+    const popup = await popupPromise;
+    await popup.waitForURL(/\/auth-launch\.html\?callbackUrl=/);
+  });
+
   test("shows preview hero for anonymous users", async ({ page }) => {
     await page.goto("/preview-auth.html");
 

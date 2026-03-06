@@ -76,4 +76,18 @@ test.describe("Popup auth preview", () => {
 
     await expect(page).toHaveURL(/\/auth\/signin\?callbackUrl=/);
   });
+
+  test("preview popup launches direct provider flow via launcher page", async ({
+    page,
+  }) => {
+    await page.goto("/preview-auth.html");
+
+    const popupPromise = page.waitForEvent("popup");
+    await page.getByRole("button", {
+      name: "Try sign in without leaving the page",
+    }).click();
+
+    const popup = await popupPromise;
+    await popup.waitForURL(/\/auth-launch\.html\?callbackUrl=/);
+  });
 });
